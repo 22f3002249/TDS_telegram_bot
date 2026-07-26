@@ -3,8 +3,8 @@ import json
 import requests
 
 GEMINI_MODELS = [
-    os.environ.get("PRIMARY_MODEL", "gemini-3.5-flash-lite"),       # Primary Model
-    os.environ.get("FALLBACK_MODEL_1", "gemini-3.6-flash"),       # Fallback 1
+    os.environ.get("PRIMARY_MODEL", "gemini-3.6-flash"),       # Primary Model
+    os.environ.get("FALLBACK_MODEL_1", "gemini-3.5-flash-lite"),       # Fallback 1
     os.environ.get("FALLBACK_MODEL_2", "gemini-3.1-flash-lite"),     # Fallback 2
 ]
 
@@ -24,12 +24,15 @@ def run_agent(question: str, public_log_url: str) -> str:
         
     log_step({"event": "received_question", "question": question})
 
-    system_prompt = (
-        "You are an expert data analyst agent. You will receive a data analysis question. "
-        "Analyze the requirements, fetch any necessary public datasets if pointed to, "
-        "and return ONLY a valid JSON string matching the requested output format. "
-        "Do not include markdown code block ticks like ```json in your response, just the raw JSON object."
-    )
+    system_prompt = """You are an expert data-analysis agent. Follow these strict instructions carefully:
+
+1. Work out the answer to the user's LATEST message. Earlier messages in the chat are context for multi-turn tasks.
+2. The message may embed data inline, or reference a public dataset (MOSPI, data.gov.in, etc.). Compute answers accurately—do not guess numeric results when you can derive them. For well-known published statistics (e.g. maternal mortality rates), use reliable knowledge if fetching fails.
+3. The message will usually spell out the exact JSON shape it wants (e.g., {"answer": {"state": "<state>"}, "log_url": "..."}).
+4. When you are ready to answer, reply with ONLY that JSON object and nothing else — no prose, no markdown fences (like ```json). Use the placeholder string "LOG_URL" for the log_url value; our system will automatically substitute it with your actual log URL. Match the requested shape for "answer" EXACTLY (keys, nesting, types: numbers as numbers unless a string is asked for).
+5. If the message does not specify a shape, reply with: {"answer": <your concise answer>, "log_url": "LOG_URL"}.
+6. If a mid-conversation message is only setup/context (e.g., "I will send data next"), reply with: {"answer": "ok", "log_url": "LOG_URL"} unless a direct question is asked.
+7. Round numbers as instructed; if unspecified, give reasonable precision. Never add keys that were not asked for inside "answer"."""
 
     full_prompt = f"{system_prompt}\n\nQuestion: {question}"
 
@@ -68,7 +71,7 @@ def run_agent(question: str, public_log_url: str) -> str:
 
     try:
         if not llm_output:
-            raise Exception("All Gemini models failed to generate a response.")
+            raise Exception("All models failed to generate a response.")
 
         cleaned_output = llm_output
         if cleaned_output.startswith("```json"):
@@ -76,20 +79,20 @@ def run_agent(question: str, public_log_url: str) -> str:
         elif cleaned_output.startswith("```"):
             cleaned_output = cleaned_output[3:-3].strip()
 
-        parsed_answer = json.loads(cleaned_output)
-        
-        # FIX: If the LLM accidentally returned a dictionary containing "answer", unwrap it
-        if isinstance(parsed_answer, dict) and "answer" in parsed_answer:
-            parsed_answer = parsed_answer["answer"]
-            
+        parsed_response = json.loads(cleaned_output)
+
+        if isinstance(parsed_response, dict):
+            if "log_url" in parsed_response:
+                parsed_response["log_url"] = public_log_url
+            elif "answer" in parsed_response and isinstance(parsed_response, dict):
+                # Just in case it returned nested, ensure log_url at root is correct
+                parsed_response["log_url"] = public_log_url
+
     except Exception as e:
         log_step({"event": "parsing_error", "error": str(e), "raw_output": llm_output})
-        parsed_answer = {"error": f"Failed to parse LLM output: {str(e)}"}
+        parsed_response = {
+            "answer": {"error": f"Failed to parse LLM output: {str(e)}"},
+            "log_url": public_log_url
+        }
 
-    # Construct the final required response object cleanly here
-    final_response = {
-        "answer": parsed_answer,
-        "log_url": public_log_url
-    }
-    log_step({"event": "final_response", "model_used": success_model, "response": final_response})
-    return json.dumps(final_response)
+    return json.dumps(parsed_response)
