@@ -10,14 +10,15 @@ GEMINI_MODELS = [
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") 
 
-LOG_FILE = "run.jsonl"
+LOG_FILE = "/tmp/run.jsonl"
 
 def log_step(step_data: dict):
-    """Append a step to the local JSONL log."""
+    """Append a step to the local temporary JSONL log."""
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(step_data) + "\n")
 
 def run_agent(question: str, public_log_url: str) -> str:
+    # Clear or initialize log for this run
     if os.path.exists(LOG_FILE):
         os.remove(LOG_FILE)
         
@@ -35,12 +36,10 @@ def run_agent(question: str, public_log_url: str) -> str:
     llm_output = None
     success_model = None
 
-    # Try primary model and then fallbacks sequentially
     for model_name in GEMINI_MODELS:
         try:
             log_step({"event": "trying_model", "model": model_name})
             
-            # Google AI Studio REST API endpoint
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
             
             payload = {
@@ -52,28 +51,25 @@ def run_agent(question: str, public_log_url: str) -> str:
                 }
             }
 
-            response = requests.post(url, json=payload, timeout=45)
+            response = requests.post(url, json=payload, timeout=40)
             response_data = response.json()
             
-            # Extract response from Gemini structure
             if "candidates" in response_data and len(response_data["candidates"]) > 0:
                 llm_output = response_data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 success_model = model_name
                 log_step({"event": "model_success", "model": model_name, "output": llm_output})
-                break # Exit loop if successful
+                break 
             else:
                 log_step({"event": "model_failed", "model": model_name, "response": response_data})
                 
         except Exception as e:
             log_step({"event": "model_exception", "model": model_name, "error": str(e)})
-            continue # Try next fallback
+            continue 
 
-    # Process the output
     try:
         if not llm_output:
             raise Exception("All Gemini models failed to generate a response.")
 
-        # Clean up potential markdown formatting from LLM response
         cleaned_output = llm_output
         if cleaned_output.startswith("```json"):
             cleaned_output = cleaned_output[7:-3].strip()
@@ -85,7 +81,6 @@ def run_agent(question: str, public_log_url: str) -> str:
         log_step({"event": "parsing_error", "error": str(e), "raw_output": llm_output})
         parsed_answer = {"error": f"Failed to parse LLM output: {str(e)}"}
 
-    # Construct the final required response object
     final_response = {
         "answer": parsed_answer,
         "log_url": public_log_url
