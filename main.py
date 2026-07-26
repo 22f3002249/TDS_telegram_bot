@@ -1,6 +1,7 @@
 import os
 import requests
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
 from agent import run_agent
 
 app = FastAPI()
@@ -32,7 +33,7 @@ async def telegram_webhook(request: Request):
 
 @app.get("/run.jsonl")
 async def get_log():
-    from fastapi.responses import FileResponse
-    if os.path.exists("run.jsonl"):
-        return FileResponse("run.jsonl", media_type="application/json")
+    log_path = "/tmp/run.jsonl"
+    if os.path.exists(log_path):
+        return FileResponse(log_path, media_type="application/json")
     return {"error": "No logs yet"}
