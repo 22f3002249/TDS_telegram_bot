@@ -77,14 +77,19 @@ def run_agent(question: str, public_log_url: str) -> str:
             cleaned_output = cleaned_output[3:-3].strip()
 
         parsed_answer = json.loads(cleaned_output)
+        
+        # FIX: If the LLM accidentally returned a dictionary containing "answer", unwrap it
+        if isinstance(parsed_answer, dict) and "answer" in parsed_answer:
+            parsed_answer = parsed_answer["answer"]
+            
     except Exception as e:
         log_step({"event": "parsing_error", "error": str(e), "raw_output": llm_output})
         parsed_answer = {"error": f"Failed to parse LLM output: {str(e)}"}
 
+    # Construct the final required response object cleanly here
     final_response = {
         "answer": parsed_answer,
         "log_url": public_log_url
     }
-
     log_step({"event": "final_response", "model_used": success_model, "response": final_response})
     return json.dumps(final_response)
