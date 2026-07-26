@@ -3,8 +3,8 @@ import json
 import requests
 
 GEMINI_MODELS = [
-    os.environ.get("PRIMARY_MODEL", "gemini-3.6-flash"),       # Primary Model
-    os.environ.get("FALLBACK_MODEL_1", "gemini-3.5-flash-lite"),       # Fallback 1
+    os.environ.get("PRIMARY_MODEL", "gemini-3.5-flash-lite"),       # Primary Model
+    os.environ.get("FALLBACK_MODEL_1", "gemini-3.6-flash"),       # Fallback 1
     os.environ.get("FALLBACK_MODEL_2", "gemini-3.1-flash-lite"),     # Fallback 2
 ]
 
