@@ -34,23 +34,7 @@ def run_agent(question: str, public_log_url: str) -> str:
 6. If a mid-conversation message is only setup/context (e.g., "I will send data next"), reply with: {"answer": "ok", "log_url": "LOG_URL"} unless a direct question is asked.
 7. Round numbers as instructed; if unspecified, give reasonable precision. Never add keys that were not asked for inside "answer"."""
 
-    contents = []
-    if chat_history:
-        for msg in chat_history[:-1]: # All past messages except the current one
-            role = "user" if msg["role"] == "user" else "model"
-            contents.append({
-                "role": role,
-                "parts": [{"text": msg["content"]}]
-            })
-
-    # 2. Re-introduce your full_prompt structure for the latest message
     full_prompt = f"{system_prompt}\n\nQuestion: {question}"
-    
-    # 3. Append the current message to the contents array
-    contents.append({
-        "role": "user",
-        "parts": [{"text": full_prompt}]
-    })
 
     llm_output = None
     success_model = None
